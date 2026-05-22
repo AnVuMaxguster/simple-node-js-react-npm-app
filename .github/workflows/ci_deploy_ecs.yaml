@@ -30,6 +30,8 @@ env:
   # ECS_TASK_DEFINITION: ${{ vars.ECS_TASK_DEFINITION }}
   # CONTAINER_NAME: ${{ vars.CONTAINER_NAME }}
 
+  S3_KEY_PREFIX: "${{ secrets.ECR_REPOSITORY }}/"
+
 jobs:
   # Check which files have changes on trigger, used for some conditional jobs/steps.
   changes:
@@ -113,11 +115,10 @@ jobs:
         run: npm ci
 
       - name: Run tests
-        run: npm test --if-present
+        run: npm test
 
       - name: Build app
-        run: npm run build --if-present
-
+        run: npm run build
 
       # UPLOAD ARTIFACT TO GITHUB ACTION'S STORAGE / EXTERNAL STORAGE.
 
@@ -136,9 +137,8 @@ jobs:
       
       - name: (S3) Upload build artifact
         run: |
-          aws s3 sync ./build s3://${{ secrets.S3_BUCKET_NAME }}/ \
-            --delete \
-            --acl private
+          aws s3 sync ./build s3://${{ secrets.S3_BUCKET_NAME }}/${{ env.S3_KEY_PREFIX }} \
+            --delete
 
   docker-and-scan:
     name: Build Docker image and Trivy image scan
@@ -186,7 +186,15 @@ jobs:
       - name: (S3) Download build artifact
         run: |
           mkdir -p ./build
-          aws s3 sync s3://${{ secrets.S3_BUCKET_NAME }}/ ./build
+          aws s3 sync s3://${{ secrets.S3_BUCKET_NAME }}/${{ env.S3_KEY_PREFIX }} ./build
+
+      - name: Verify build artifact is not empty
+        run: |
+          if [ ! -d ./build ] || [ -z "$(find ./build -mindepth 1 -print -quit)" ]; then
+            echo "::error::build/ is missing or empty after S3 sync. Run test-and-build first or check S3_BUCKET_NAME / S3_KEY_PREFIX."
+            exit 1
+          fi
+          echo "build/ artifact OK ($(find ./build -type f | wc -l) file(s))"
 
       - name: Build Docker image
         run: docker build -t ${{ steps.meta.outputs.image_uri }} .
