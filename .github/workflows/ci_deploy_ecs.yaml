@@ -5,15 +5,21 @@ on:
     branches:
       - master
 
-    paths-ignore:
-      # Ignore changes to documentation
-      - 'docs/**'
-      - '**.md'
-      - '**.txt'
-      - 'CHANGELOG*'
-      - 'LICENSE*'
+    paths:
+      # Prevent workflow execution in any cases
+      # - '__disabled__/**'
 
-      - ".gitignore"
+      # Ignore changes to documentation
+      - '!docs/**'
+      - '!**.md'
+      - '!**.txt'
+      - '!CHANGELOG*'
+      - '!LICENSE*'
+
+      - "!.gitignore"
+      
+      # Prevent workflow execution on workflow files changes.
+      - '!.github/workflows/**'
 
   workflow_dispatch:
 
@@ -30,7 +36,7 @@ env:
   # ECS_TASK_DEFINITION: ${{ vars.ECS_TASK_DEFINITION }}
   # CONTAINER_NAME: ${{ vars.CONTAINER_NAME }}
 
-  S3_KEY_PREFIX: "${{ secrets.ECR_REPOSITORY }}/"
+  S3_KEY_PREFIX: "${{ vars.ECR_REPOSITORY }}/"
 
 jobs:
   # Check which files have changes on trigger, used for some conditional jobs/steps.
@@ -73,8 +79,8 @@ jobs:
         with:
           scan-type: 'fs'
           scan-ref: .
-          format: 'sarif'
-          output: 'trivy-fs-results.sarif'
+          format: 'table'
+          # output: 'trivy-fs-results.sarif'
           severity: 'CRITICAL,HIGH'
           exit-code: '1'
           ignore-unfixed: true
@@ -204,8 +210,8 @@ jobs:
         with:
           scan-type: 'image'
           image-ref: ${{ steps.meta.outputs.image_uri }}
-          format: 'sarif'
-          output: 'trivy-image-results.sarif'
+          format: 'table'
+          # output: 'trivy-image-results.sarif'
           severity: 'CRITICAL,HIGH'
           exit-code: '1'
           ignore-unfixed: true
