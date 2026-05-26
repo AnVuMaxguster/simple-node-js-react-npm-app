@@ -5,28 +5,25 @@ on:
     branches:
       - master
 
-    paths:
-      # Prevent workflow execution in any cases
-      # - '__disabled__/**'
+    paths-ignore:
+      # Ignore changes to certain files.
+      - 'docs/**'
+      - '**.md'
+      - '**.txt'
+      - 'CHANGELOG*'
+      - 'LICENSE*'
+      - '.gitignore'
+      # - '.github/workflows/**'
 
-      # Ignore changes to documentation
-      - '!docs/**'
-      - '!**.md'
-      - '!**.txt'
-      - '!CHANGELOG*'
-      - '!LICENSE*'
-
-      - "!.gitignore"
-      
-      # Prevent workflow execution on workflow files changes.
-      - '!.github/workflows/**'
+      # Prevent workflow execution completely.
+      # - '**'
 
   workflow_dispatch:
 
 permissions:
   contents: read
+  # Sarif upload
   security-events: write
-  id-token: write
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
@@ -35,8 +32,7 @@ env:
   # ECS_SERVICE: ${{ vars.ECS_SERVICE }}
   # ECS_TASK_DEFINITION: ${{ vars.ECS_TASK_DEFINITION }}
   # CONTAINER_NAME: ${{ vars.CONTAINER_NAME }}
-
-  S3_KEY_PREFIX: "${{ vars.ECR_REPOSITORY }}/"
+  S3_ARTIFACT_PREFIX: "${{ vars.ECR_REPOSITORY }}/"
 
 jobs:
   # Check which files have changes on trigger, used for some conditional jobs/steps.
@@ -79,8 +75,12 @@ jobs:
         with:
           scan-type: 'fs'
           scan-ref: .
-          format: 'table'
-          # output: 'trivy-fs-results.sarif'
+          format: 'sarif'
+          output: 'trivy-fs-results.sarif'
+
+          # By default SARIF format enforces output of all vulnerabilities regardless of configured severities
+          limit-severities-for-sarif: true 
+
           severity: 'CRITICAL,HIGH'
           exit-code: '1'
           ignore-unfixed: true
@@ -88,7 +88,7 @@ jobs:
           # Setting for vuln scanner: Scan language-specific packages.
           vuln-type: 'library'
 
-          # By adding 'misconfig', IaC files (e.g Dockerfile) in the dir will also be scanned.
+          # By adding 'misconfig', IaC files (e.g Dockerfile) in the fs will also be scanned.
           scanners: 'vuln,secret,misconfig'
 
       - name: Upload filesystem scan to GitHub Security
@@ -111,11 +111,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '21.x'
+          # LTS versions recommended
+          node-version: '22.x'
 
-          # Save cached packages between runners (especially ephemeral GitHub runners).
+          # Caches packages in ~/.npm between jobs/runs for faster workflow speed.
           # Uses actions/cache under the hood.
-          cache: npm 
+          # (!) Cache only saves once this whole job succeeds.
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
@@ -143,7 +145,7 @@ jobs:
       
       - name: (S3) Upload build artifact
         run: |
-          aws s3 sync ./build s3://${{ secrets.S3_BUCKET_NAME }}/${{ env.S3_KEY_PREFIX }} \
+          aws s3 sync ./build s3://${{ secrets.S3_BUCKET_NAME }}/${{ env.S3_ARTIFACT_PREFIX}} \
             --delete
 
   docker-and-scan:
@@ -192,12 +194,12 @@ jobs:
       - name: (S3) Download build artifact
         run: |
           mkdir -p ./build
-          aws s3 sync s3://${{ secrets.S3_BUCKET_NAME }}/${{ env.S3_KEY_PREFIX }} ./build
+          aws s3 sync s3://${{ secrets.S3_BUCKET_NAME }}/${{ env.S3_ARTIFACT_PREFIX }} ./build
 
       - name: Verify build artifact is not empty
         run: |
           if [ ! -d ./build ] || [ -z "$(find ./build -mindepth 1 -print -quit)" ]; then
-            echo "::error::build/ is missing or empty after S3 sync. Run test-and-build first or check S3_BUCKET_NAME / S3_KEY_PREFIX."
+            echo "::error::build/ is missing or empty after S3 sync. Run test-and-build first or check S3_BUCKET_NAME / S3_ARTIFACT_PREFIX."
             exit 1
           fi
           echo "build/ artifact OK ($(find ./build -type f | wc -l) file(s))"
@@ -210,8 +212,12 @@ jobs:
         with:
           scan-type: 'image'
           image-ref: ${{ steps.meta.outputs.image_uri }}
-          format: 'table'
-          # output: 'trivy-image-results.sarif'
+          format: 'sarif'
+          output: 'trivy-image-results.sarif'
+          
+          # By default SARIF format enforces output of all vulnerabilities regardless of configured severities
+          limit-severities-for-sarif: true 
+
           severity: 'CRITICAL,HIGH'
           exit-code: '1'
           ignore-unfixed: true
