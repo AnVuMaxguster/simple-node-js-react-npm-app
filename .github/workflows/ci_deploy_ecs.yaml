@@ -13,12 +13,28 @@ on:
       - 'CHANGELOG*'
       - 'LICENSE*'
       - '.gitignore'
-      # - '.github/workflows/**'
+      - '.github/workflows/**'
 
-      # Prevent workflow execution completely.
+      # (!) Prevent workflow execution completely.
       # - '**'
 
   workflow_dispatch:
+    inputs:
+      # (Workflow testing) Choose jobs to run.
+      run_code:
+        description: "Run code tests, scan & build"
+        type: boolean
+        default: false
+
+      run_image:
+        description: "Run image scan & build"
+        type: boolean
+        default: false
+
+      run_deploy:
+        description: "Run deploy"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -65,7 +81,7 @@ jobs:
     name: Trivy filesystem scan
     runs-on: ubuntu-latest
     needs: changes
-    if: ${{ needs.changes.outputs.app == 'true' }}
+    if: ${{ needs.changes.outputs.app == 'true' || inputs.run_code }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
@@ -103,7 +119,7 @@ jobs:
     name: Test and build Node app
     runs-on: ubuntu-latest
     needs: changes
-    if: ${{ needs.changes.outputs.app == 'true' }}
+    if: ${{ needs.changes.outputs.app == 'true' || inputs.run_code }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
@@ -158,7 +174,8 @@ jobs:
     if: >-
       always() &&
       ( needs.test-and-build.result == 'success' && needs.project-scan.result == 'success') ||
-      ( needs.test-and-build.result == 'skipped' && needs.changes.outputs.dockerfile == 'true' )
+      ( needs.test-and-build.result == 'skipped' && needs.changes.outputs.dockerfile == 'true' ) ||
+      inputs.run_image
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
@@ -179,7 +196,7 @@ jobs:
         shell: bash
         run: |
           IMAGE_TAG=${GITHUB_SHA::7}
-          IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${IMAGE_TAG}
+          IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
           echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
           echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
 
@@ -205,7 +222,11 @@ jobs:
           echo "build/ artifact OK ($(find ./build -type f | wc -l) file(s))"
 
       - name: Build Docker image
-        run: docker build -t ${{ steps.meta.outputs.image_uri }} .
+        run: |
+          docker build 
+          -t ${{ steps.meta.outputs.image_uri }}:${{ steps.meta.outputs.image_tag }} \
+          -t ${{ steps.meta.outputs.image_uri }}:latest \
+          .
 
       - name: Run Trivy vulnerability & secret scan on image
         uses: aquasecurity/trivy-action@v0.36.0
@@ -236,12 +257,13 @@ jobs:
           sarif_file: trivy-image-results.sarif
 
       - name: Push Docker image to ECR
-        run: docker push ${{ steps.meta.outputs.image_uri }}
+        run: docker push --all-tags ${{ steps.meta.outputs.image_uri }}
 
   # deploy-to-ecs:
   #   name: Deploy image to ECS
   #   runs-on: ubuntu-latest
   #   needs: docker-and-scan
+  #   if: ${{ inputs.run_deploy }}
   #   steps:
   #     - name: Checkout source
   #       uses: actions/checkout@v6
