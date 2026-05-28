@@ -13,14 +13,14 @@ on:
       - 'CHANGELOG*'
       - 'LICENSE*'
       - '.gitignore'
-      # - '.github/workflows/**'
+      - '.github/workflows/**'
 
       # (!) Prevent workflow execution completely.
       # - '**'
 
   workflow_dispatch:
     inputs:
-      # (Workflow testing) Choose jobs to run.
+      # (For testing) Choose jobs to run.
       run_code:
         description: "Run code tests, scan & build"
         type: boolean
@@ -65,6 +65,10 @@ jobs:
     - uses: dorny/paths-filter@v4
       id: filter
       with:
+        # (!) Only apply to push events, might need to compute dynamic values if workflow accepts multiple event types.
+        # This means: compute diff between HEAD before push vs current HEAD of the same branch.
+        base: ${{ github.ref }}
+      
         filters: |
           app:
             - 'src/**'
@@ -81,7 +85,9 @@ jobs:
     name: Trivy filesystem scan
     runs-on: ubuntu-latest
     needs: changes
-    if: ${{ needs.changes.outputs.app == 'true' || inputs.run_code }}
+    if: >-
+      (github.event_name == 'push' && needs.changes.outputs.app == 'true') ||
+      (github.event_name == 'workflow_dispatch' && inputs.run_code)
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
@@ -119,7 +125,9 @@ jobs:
     name: Test and build Node app
     runs-on: ubuntu-latest
     needs: changes
-    if: ${{ needs.changes.outputs.app == 'true' || inputs.run_code }}
+    if: >-
+      (github.event_name == 'push' && needs.changes.outputs.app == 'true') ||
+      (github.event_name == 'workflow_dispatch' && inputs.run_code)
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
@@ -172,10 +180,13 @@ jobs:
     needs: [changes, test-and-build, project-scan]
     # Always build docker image whether app code changes or only Dockerfile changes.
     if: >-
-      always() &&
-      ( needs.test-and-build.result == 'success' && needs.project-scan.result == 'success') ||
-      ( needs.test-and-build.result == 'skipped' && needs.changes.outputs.dockerfile == 'true' ) ||
-      inputs.run_image
+      always() && (
+        (github.event_name == 'push' && (
+          (needs.test-and-build.result == 'success' && needs.project-scan.result == 'success') ||
+          (needs.test-and-build.result == 'skipped' && needs.changes.outputs.dockerfile == 'true')
+        )) ||
+        (github.event_name == 'workflow_dispatch' && inputs.run_image)
+      )
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
@@ -223,7 +234,7 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build 
+          docker build \
           -t ${{ steps.meta.outputs.image_uri }}:${{ steps.meta.outputs.image_tag }} \
           -t ${{ steps.meta.outputs.image_uri }}:latest \
           .
@@ -263,7 +274,7 @@ jobs:
   #   name: Deploy image to ECS
   #   runs-on: ubuntu-latest
   #   needs: docker-and-scan
-  #   if: ${{ inputs.run_deploy }}
+  #   if: inputs.run_deploy
   #   steps:
   #     - name: Checkout source
   #       uses: actions/checkout@v6
