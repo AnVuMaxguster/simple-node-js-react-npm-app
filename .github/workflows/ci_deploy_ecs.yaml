@@ -354,6 +354,7 @@ jobs:
         env:
           PATH: ${{ steps.render-task-def.outputs.task-definition }}
         run:
+          ls
           cat ${PATH}
 
       - name: Deploy ECS task definition
