@@ -353,7 +353,7 @@ jobs:
       - name: debug
         env:
           PATH: ${{ steps.render-task-def.outputs.task-definition }}
-        run:
+        run: |
           ls
           cat ${PATH}
 
