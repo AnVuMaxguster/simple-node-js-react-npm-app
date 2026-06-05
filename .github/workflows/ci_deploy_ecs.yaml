@@ -112,6 +112,8 @@ jobs:
 
           # By adding 'misconfig', IaC files (e.g Dockerfile) in the fs will also be scanned.
           scanners: 'vuln,secret,misconfig'
+          
+          trivyignores: '.trivyignore'
 
       - name: Upload filesystem scan to GitHub Security
         # Upload results even when scan fails (exit 1)
@@ -261,6 +263,7 @@ jobs:
           vuln-type: 'os,library'
 
           scanners: 'vuln,secret'
+          trivyignores: '.trivyignore-image'
 
       - name: Upload Trivy scan to GitHub Security
         # Upload results even when scan fails (exit 1)
@@ -317,7 +320,7 @@ jobs:
         run: |
           jq \
             --arg executionRoleArn "${EXECUTION_ROLE_ARN}" \
-            '.executionRoleArn = $executionRoleArn | .awslogs-region = $awslogs-region' \
+            '.executionRoleArn = $executionRoleArn' \
             ${ECS_TASK_DEFINITION} > task-def.tmp.json && mv task-def.tmp.json ${ECS_TASK_DEFINITION}
 
       # (*) Task includes a single container
