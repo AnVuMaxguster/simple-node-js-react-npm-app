@@ -43,11 +43,11 @@ permissions:
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
+
   ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
-  # ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
-  # ECS_SERVICE: ${{ vars.ECS_SERVICE }}
-  # ECS_TASK_DEFINITION: ${{ vars.ECS_TASK_DEFINITION }}
-  # CONTAINER_NAME: ${{ vars.CONTAINER_NAME }}
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+  ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+
   S3_ARTIFACT_PREFIX: "${{ vars.ECR_REPOSITORY }}/"
 
 jobs:
@@ -176,6 +176,7 @@ jobs:
     name: Build Docker image and Trivy image scan
     runs-on: ubuntu-latest
     outputs:
+      image_uri: ${{ steps.meta.outputs.image_uri }}
       image_tag: ${{ steps.meta.outputs.image_tag }}
     needs: [changes, test-and-build, project-scan]
     # Always build docker image whether app code changes or only Dockerfile changes.
@@ -194,6 +195,8 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
+          # Recommend to set up Github Action OIDC with AWS IAM & assume IAM role to authenticate 
+          # instead of long-live user access key.
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
@@ -270,45 +273,82 @@ jobs:
       - name: Push Docker image to ECR
         run: docker push --all-tags ${{ steps.meta.outputs.image_uri }}
 
-  # deploy-to-ecs:
-  #   name: Deploy image to ECS
-  #   runs-on: ubuntu-latest
-  #   needs: docker-and-scan
-  #   if: inputs.run_deploy
-  #   steps:
-  #     - name: Checkout source
-  #       uses: actions/checkout@v6
+  deploy-to-ecs:
+    name: Deploy image to ECS
+    runs-on: ubuntu-latest
+    needs: docker-and-scan
+    if: >-
+      always() && (
+        (github.event_name == 'push' && needs.docker-and-scan.result == 'success') ||
+        (github.event_name == 'workflow_dispatch' && inputs.run_deploy)
+      )
+    env:
+      # This file should be stored in a dedicated deployment repo.
+      ECS_TASK_DEFINITION: 'aws/esc_task-def.json'
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
 
-  #     - name: Configure AWS credentials
-  #       uses: aws-actions/configure-aws-credentials@v4
-  #       with:
-  #         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  #         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  #         aws-region: ${{ env.AWS_REGION }}
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        id: aws-cred
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          output-credentials: true
 
-  #     - name: Login to Amazon ECR
-  #       id: login-ecr
-  #       uses: aws-actions/amazon-ecr-login@v2
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-  #     - name: Set deployment image URI
-  #       id: image
-  #       shell: bash
-  #       run: |
-  #         IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ needs.docker-and-scan.outputs.image_tag }}
-  #         echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+        # Either using the output from the build step or reconstructing it.
+      - name: Set deployment image URI
+        id: image
+        shell: bash
+        run: |
+          IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ needs.docker-and-scan.outputs.image_tag }}
 
-  #     - name: Render ECS task definition with new image
-  #       id: render-task-def
-  #       uses: aws-actions/amazon-ecs-render-task-definition@v1
-  #       with:
-  #         task-definition: ${{ env.ECS_TASK_DEFINITION }}
-  #         container-name: ${{ env.CONTAINER_NAME }}
-  #         image: ${{ steps.image.outputs.image_uri }}
+      # Supplemental step: some configs are not supported by aws-actions/amazon-ecs-render-task-definition
+      # So here we render manually using jq tool.
+      - name: (Supplemental) Render task definition file 
+        env:
+          EXECUTION_ROLE_ARN: "arn:aws:iam::${{ steps.aws-cred.outputs.aws-account-id }}:role/ecsTaskExecutionRole"
+        run: |
+          jq \
+            --arg executionRoleArn "${EXECUTION_ROLE_ARN}" \
+            '.executionRoleArn = $executionRoleArn | .awslogs-region = $awslogs-region' \
+            ${ECS_TASK_DEFINITION} > task-def.tmp.json && mv task-def.tmp.json ${ECS_TASK_DEFINITION}
 
-  #     - name: Deploy ECS task definition
-  #       uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-  #       with:
-  #         task-definition: ${{ steps.render-task-def.outputs.task-definition }}
-  #         service: ${{ env.ECS_SERVICE }}
-  #         cluster: ${{ env.ECS_CLUSTER }}
-  #         wait-for-service-stability: true
+      # (*) Task includes a single container
+      - name: Render ECS task definition with new image
+        id: render-task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        env:
+          CONTAINER_NAME: main-app
+          CONTAINER_LOG_DRIVER: awslogs
+          CONTAINER_AWS_LOG_REGION: ${{ env.AWS_REGION }}
+          CONTAINER_AWS_LOG_GROUP: /ecs/${{ env.ECS_CLUSTER }}
+          CONTAINER_AWS_LOG_STREAM_PREFIX: ${{ env.ECS_SERVICE }}
+        with:
+          task-definition: ${{ env.ECS_TASK_DEFINITION }}
+          container-name: ${{ env.CONTAINER_NAME }}
+
+          image: ${{ steps.image.outputs.image_uri }}
+          # Alternatively, use the outputs from the build job, reduce ECR call and URI construct steps.
+          # image: "${{ needs.docker-and-scan.outputs.image_uri }}:${{ needs.docker-and-scan.outputs.image_tag }}"
+
+          log-configuration-log-driver: awslogs
+          log-configuration-options: |
+            awslogs-create-group=true
+            awslogs-group=${CONTAINER_AWS_LOG_GROUP}
+            awslogs-region=${CONTAINER_AWS_LOG_GROUP}
+            awslogs-stream-prefix=${CONTAINER_AWS_LOG_GROUP}
+
+      - name: Deploy ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true

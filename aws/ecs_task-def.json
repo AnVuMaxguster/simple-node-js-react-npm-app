@@ -1,0 +1,37 @@
+{
+    "family": "simple-react-frontend",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": ["FARGATE"],
+    "cpu": "512",
+    "memory": "1024",
+    "executionRoleArn": "_PLACEHOLDER_",
+    "containerDefinitions": [
+      {
+        "name": "_PLACEHOLDER_",
+        "image": "_PLACEHOLDER_",
+        "essential": true,
+        "portMappings": [
+          {
+            "containerPort": 8080,
+            "protocol": "tcp"
+          }
+        ],
+        "logConfiguration": {
+          "logDriver": "_PLACEHOLDER_",
+          "options": {
+            "awslogs-create-group": "true",
+            "awslogs-group": "_PLACEHOLDER_",
+            "awslogs-region": "_PLACEHOLDER_",
+            "awslogs-stream-prefix": "_PLACEHOLDER_"
+          }
+        },
+        "healthCheck": {
+          "command": ["CMD", "curl", "-f", "http://localhost:8080/"],
+          "interval": 15,
+          "timeout": 5,
+          "retries": 3,
+          "startPeriod": 10
+        }
+      }
+    ]
+  }
