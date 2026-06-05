@@ -354,7 +354,7 @@ jobs:
         env:
           RENDERED_TASK_DEF: ${{ steps.render-task-def.outputs.task-definition }}
         run: |
-          ls
+          ls -la aws/
           cat ${RENDERED_TASK_DEF}
 
       - name: Deploy ECS task definition
