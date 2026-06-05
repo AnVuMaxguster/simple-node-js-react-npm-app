@@ -310,7 +310,7 @@ jobs:
         id: image
         shell: bash
         run: |
-          IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ needs.docker-and-scan.outputs.image_tag }}
+          IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
           echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
 
       # Supplemental step: some configs are not supported by aws-actions/amazon-ecs-render-task-definition
@@ -329,14 +329,14 @@ jobs:
         id: render-task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         env:
-          CONTAINER_NAME: main-app
           CONTAINER_LOG_DRIVER: awslogs
           CONTAINER_AWS_LOG_REGION: ${{ env.AWS_REGION }}
           CONTAINER_AWS_LOG_GROUP: /ecs/${{ env.ECS_CLUSTER }}
           CONTAINER_AWS_LOG_STREAM_PREFIX: ${{ env.ECS_SERVICE }}
         with:
+          # (!) Container name has to be already set in the ECS Task Definition. Can't set/overwrite it from here.
+
           task-definition: ${{ env.ECS_TASK_DEFINITION }}
-          container-name: ${{ env.CONTAINER_NAME }}
 
           image: ${{ steps.image.outputs.image_uri }}
           # Alternatively, use the outputs from the build job, reduce ECR call and URI construct steps.

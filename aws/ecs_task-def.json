@@ -7,7 +7,7 @@
     "executionRoleArn": "_PLACEHOLDER_",
     "containerDefinitions": [
       {
-        "name": "_PLACEHOLDER_",
+        "name": "main-app",
         "image": "_PLACEHOLDER_",
         "essential": true,
         "portMappings": [
