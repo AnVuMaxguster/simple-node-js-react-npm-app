@@ -311,6 +311,7 @@ jobs:
         shell: bash
         run: |
           IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ needs.docker-and-scan.outputs.image_tag }}
+          echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
 
       # Supplemental step: some configs are not supported by aws-actions/amazon-ecs-render-task-definition
       # So here we render manually using jq tool.
