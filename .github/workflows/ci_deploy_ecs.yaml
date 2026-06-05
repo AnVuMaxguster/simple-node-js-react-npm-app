@@ -352,10 +352,10 @@ jobs:
 
       - name: debug
         env:
-          PATH: ${{ steps.render-task-def.outputs.task-definition }}
+          RENDERED_TASK_DEF: ${{ steps.render-task-def.outputs.task-definition }}
         run: |
           ls
-          cat ${PATH}
+          cat ${RENDERED_TASK_DEF}
 
       - name: Deploy ECS task definition
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
