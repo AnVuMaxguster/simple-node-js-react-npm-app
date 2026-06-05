@@ -288,6 +288,7 @@ jobs:
     env:
       # This file should be stored in a dedicated deployment repo.
       ECS_TASK_DEFINITION: 'aws/ecs_task-def.json'
+      CONTAINER_NAME: 'main-app'
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
@@ -313,7 +314,7 @@ jobs:
           IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
           echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
 
-      # Supplemental step: some configs are not supported by aws-actions/amazon-ecs-render-task-definition
+      # Supplemental step: some configs can't be rendered by aws-actions/amazon-ecs-render-task-definition
       # So here we render manually using jq tool.
       - name: (Supplemental) Render task definition file 
         env:
@@ -321,7 +322,8 @@ jobs:
         run: |
           jq \
             --arg executionRoleArn "${EXECUTION_ROLE_ARN}" \
-            '.executionRoleArn = $executionRoleArn' \
+            --arg container_name "${CONTAINER_NAME}" \
+            '.executionRoleArn = $executionRoleArn | .containerDefinitions.name = $container_name' \
             ${ECS_TASK_DEFINITION} > task-def.tmp.json && mv task-def.tmp.json ${ECS_TASK_DEFINITION}
 
       # (*) Task includes a single container
@@ -334,7 +336,8 @@ jobs:
           CONTAINER_AWS_LOG_GROUP: /ecs/${{ env.ECS_CLUSTER }}
           CONTAINER_AWS_LOG_STREAM_PREFIX: ${{ env.ECS_SERVICE }}
         with:
-          # (!) Container name has to be already set in the ECS Task Definition. Can't set/overwrite it from here.
+          # (!) Container name has to be already set in the ECS Task Definition. The actionn can't set/overwrite it.
+          container_name: ${{ env.CONTAINER_NAME }}
 
           task-definition: ${{ env.ECS_TASK_DEFINITION }}
 
