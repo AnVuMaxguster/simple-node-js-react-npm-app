@@ -287,7 +287,7 @@ jobs:
       )
     env:
       # This file should be stored in a dedicated deployment repo.
-      ECS_TASK_DEFINITION: 'aws/esc_task-def.json'
+      ECS_TASK_DEFINITION: 'aws/ecs_task-def.json'
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
