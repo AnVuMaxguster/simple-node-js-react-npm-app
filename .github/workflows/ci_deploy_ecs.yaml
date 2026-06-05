@@ -346,15 +346,14 @@ jobs:
           log-configuration-log-driver: awslogs
           log-configuration-options: |
             awslogs-create-group=true
-            awslogs-group=${CONTAINER_AWS_LOG_GROUP}
-            awslogs-region=${CONTAINER_AWS_LOG_GROUP}
-            awslogs-stream-prefix=${CONTAINER_AWS_LOG_GROUP}
+            awslogs-group=${{ env.CONTAINER_AWS_LOG_GROUP }}
+            awslogs-region=${{ env.CONTAINER_AWS_LOG_REGION }}
+            awslogs-stream-prefix=${{ env.CONTAINER_AWS_LOG_STREAM_PREFIX }}
 
       - name: debug
         env:
           RENDERED_TASK_DEF: ${{ steps.render-task-def.outputs.task-definition }}
         run: |
-          ls -la aws/
           cat ${RENDERED_TASK_DEF}
 
       - name: Deploy ECS task definition
