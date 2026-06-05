@@ -351,8 +351,10 @@ jobs:
             awslogs-stream-prefix=${CONTAINER_AWS_LOG_GROUP}
 
       - name: debug
+        env:
+          PATH: ${{ steps.render-task-def.outputs.task-definition }}
         run:
-          cat ${ECS_TASK_DEFINITION}
+          cat ${PATH}
 
       - name: Deploy ECS task definition
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
