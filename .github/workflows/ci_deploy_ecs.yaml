@@ -335,7 +335,7 @@ jobs:
           CONTAINER_AWS_LOG_STREAM_PREFIX: ${{ env.ECS_SERVICE }}
         with:
           # (!) Container name has to be already set in the ECS Task Definition. The actionn can't create/overwrite it.
-          container_name: 'main-app'
+          container-name: 'main-app'
 
           task-definition: ${{ env.ECS_TASK_DEFINITION }}
 
