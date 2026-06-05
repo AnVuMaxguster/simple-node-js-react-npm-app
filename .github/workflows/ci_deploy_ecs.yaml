@@ -288,7 +288,6 @@ jobs:
     env:
       # This file should be stored in a dedicated deployment repo.
       ECS_TASK_DEFINITION: 'aws/ecs_task-def.json'
-      CONTAINER_NAME: 'main-app'
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
@@ -322,8 +321,7 @@ jobs:
         run: |
           jq \
             --arg executionRoleArn "${EXECUTION_ROLE_ARN}" \
-            --arg container_name "${CONTAINER_NAME}" \
-            '.executionRoleArn = $executionRoleArn | .containerDefinitions.name = $container_name' \
+            '.executionRoleArn = $executionRoleArn' \
             ${ECS_TASK_DEFINITION} > task-def.tmp.json && mv task-def.tmp.json ${ECS_TASK_DEFINITION}
 
       # (*) Task includes a single container
@@ -336,8 +334,8 @@ jobs:
           CONTAINER_AWS_LOG_GROUP: /ecs/${{ env.ECS_CLUSTER }}
           CONTAINER_AWS_LOG_STREAM_PREFIX: ${{ env.ECS_SERVICE }}
         with:
-          # (!) Container name has to be already set in the ECS Task Definition. The actionn can't set/overwrite it.
-          container_name: ${{ env.CONTAINER_NAME }}
+          # (!) Container name has to be already set in the ECS Task Definition. The actionn can't create/overwrite it.
+          container_name: 'main-app'
 
           task-definition: ${{ env.ECS_TASK_DEFINITION }}
 
