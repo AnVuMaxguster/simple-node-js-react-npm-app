@@ -350,6 +350,10 @@ jobs:
             awslogs-region=${CONTAINER_AWS_LOG_GROUP}
             awslogs-stream-prefix=${CONTAINER_AWS_LOG_GROUP}
 
+      - name: debug
+        run:
+          cat ${ECS_TASK_DEFINITION}
+
       - name: Deploy ECS task definition
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
